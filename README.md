@@ -17,6 +17,7 @@
 </p>
 
 <p align="center">
+  <a href="https://justusewaldo.com"><b>Website</b></a> ·
   <a href="#install"><b>Install</b></a> ·
   <a href="#what-makes-it-different"><b>How it works</b></a> ·
   <a href="#hard-stops"><b>Hard stops</b></a> ·
