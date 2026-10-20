@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/media/banner-dark.png">
-    <img alt="waldo. Hands for every AI. Starting with your Mac." src="docs/media/banner-light.png">
+    <img alt="just use waldo. Hands for every AI. Starting with your Mac." src="docs/media/banner-light.png">
   </picture>
 </p>
 
