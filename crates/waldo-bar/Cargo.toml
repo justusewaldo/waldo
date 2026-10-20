@@ -1,0 +1,12 @@
+[package]
+name = "waldo-bar"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+# Pinned to a published gpui. runtime_shaders compiles the shaders at first
+# launch, so the build needs no Metal toolchain.
+gpui = { version = "=0.2.2", features = ["runtime_shaders"] }
+futures = "0.3"
+serde_json.workspace = true
+waldo-core.workspace = true

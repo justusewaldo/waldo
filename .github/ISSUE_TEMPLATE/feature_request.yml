@@ -1,0 +1,23 @@
+name: Feature request
+description: An idea for Waldo, with a clear test.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What should your agent do on your Mac that it cannot do today?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: What Waldo should do, and how we would know it works.
+    validations:
+      required: true
+  - type: textarea
+    id: gates
+    attributes:
+      label: The gates
+      description: Does this touch money, sending as you, passwords, or destructive changes? Say how it stays safe.

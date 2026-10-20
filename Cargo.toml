@@ -1,0 +1,22 @@
+[workspace]
+resolver = "2"
+members = ["crates/waldo-core", "crates/waldo", "crates/waldo-bar"]
+default-members = ["crates/waldo"]
+
+[workspace.package]
+version = "0.3.0"
+edition = "2021"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+waldo-core = { path = "crates/waldo-core" }
+
+[profile.release]
+opt-level = 3
+debug = false
+
+# The bar should feel like the product even in dev builds.
+[profile.dev.package."*"]
+opt-level = 2

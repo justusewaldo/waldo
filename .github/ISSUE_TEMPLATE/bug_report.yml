@@ -1,0 +1,53 @@
+name: Bug report
+description: Something did not work the way the README says.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. A way past a gate, the stop switch, or the audit log is a security bug. Report that privately instead, as [SECURITY.md](https://github.com/justusewaldo/waldo/blob/main/SECURITY.md) says.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you asked for, what Waldo did, and what you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to see it
+      description: The steps, the prompt, or the tool call. The output of `waldo call` helps.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Waldo version
+      placeholder: "0.3.0"
+    validations:
+      required: true
+  - type: input
+    id: mac
+    attributes:
+      label: Mac and macOS
+      placeholder: "MacBook Air M5, macOS 26.5"
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: Agent and model
+      placeholder: "Claude Code, Codex, Gemini CLI, or Cursor, and the model"
+  - type: textarea
+    id: status
+    attributes:
+      label: waldo status
+      description: The output of `waldo status`.
+      render: text
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy
+      options:
+        - label: I removed home paths, email addresses, names, and anything private from this report.
+          required: true

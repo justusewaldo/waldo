@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build, test, lint
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Build every crate, test target, and example
+        run: cargo build --workspace --all-targets --locked
+      - name: Unit tests
+        run: cargo test --workspace --locked
+      - name: "Lint: OS state is never read by parsing program output"
+        run: cargo clippy -p waldo-core --locked -- -A clippy::all -D clippy::disallowed_methods
+      - name: Gate panel helper
+        run: swiftc -O helpers/ask.swift -o "$RUNNER_TEMP/waldo-ask"
+
+  privacy:
+    name: Privacy check
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: No home paths or personal email addresses in added lines
+        run: |
+          added=$(git diff --unified=0 "origin/${{ github.base_ref }}...HEAD" | grep -E '^\+' | grep -vE '^\+\+\+' || true)
+          if printf '%s\n' "$added" | grep -nE '/Users/[A-Za-z0-9._-]+/|/home/[A-Za-z0-9._-]+/|[A-Za-z0-9._%+-]+@(gmail|googlemail|yahoo|hotmail|outlook|icloud|proton|protonmail)\.(com|me)'; then
+            echo "::error::Added lines contain a home path or a personal email address. Remove it before merging."
+            exit 1
+          fi
+          echo "No home paths or personal email addresses in added lines."

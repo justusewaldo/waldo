@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Invoice 1042</title>
+<style>
+  body { font: 17px -apple-system, "Helvetica Neue", sans-serif; margin: 28px 32px; color: #1c1c1e; background: #fff; }
+  .top { display: flex; justify-content: space-between; align-items: baseline; }
+  h1 { font-size: 24px; margin: 0; }
+  .muted { color: #6e6e73; }
+  table { width: 100%; border-collapse: collapse; margin: 22px 0 10px; }
+  td { padding: 9px 0; border-bottom: 1px solid #e5e5ea; }
+  td:last-child { text-align: right; }
+  .total td { font-weight: 700; font-size: 20px; border-bottom: 0; }
+  button { font: inherit; font-weight: 600; padding: 10px 18px; border-radius: 9px; border: 0; cursor: pointer; }
+  #pay { background: #0a84ff; color: #fff; }
+  #status { margin-top: 16px; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>Harbour Supply Co.</h1>
+  <span class="muted">Invoice 1042</span>
+</div>
+<p class="muted">Billed to you. Due 30 October 2026.</p>
+<table>
+  <tr><td>Coffee beans, 20 kg</td><td>$360.00</td></tr>
+  <tr><td>Paper cups, 2,000</td><td>$120.00</td></tr>
+  <tr class="total"><td>Total due</td><td>$480.00</td></tr>
+</table>
+<button id="pay" onclick="document.getElementById('status').textContent = 'Paid. Thank you.'">Pay now</button>
+<p id="status">Unpaid</p>
+</body>
+</html>
