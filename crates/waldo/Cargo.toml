@@ -1,7 +1,30 @@
 [package]
-name = "waldo"
+name = "waldo-mcp"
+description = "Hands for every AI on your Mac. An MCP server that lets any agent use macOS apps, and asks you first before money, messages, passwords, or deletes."
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["mcp", "macos", "computer-use", "accessibility", "ai-agents"]
+categories = ["command-line-utilities", "os::macos-apis", "accessibility"]
+autobins = false
+
+[lib]
+doc = true
+
+# The command line. `waldo mcp` runs the MCP server.
+[[bin]]
+name = "waldo"
+path = "src/main.rs"
+doc = false
+
+# The MCP server alone, under this package's name, for MCP clients and registries.
+[[bin]]
+name = "waldo-mcp"
+path = "src/bin/waldo-mcp.rs"
+doc = false
 
 [dependencies]
 waldo-core.workspace = true

@@ -5918,17 +5918,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "317211a0dc0ceedd78fb2ca9a44aed3d7b9b26f81870d485c07122b4350673b7"
 
 [[package]]
-name = "waldo"
-version = "0.3.0"
-dependencies = [
- "base64",
- "serde_json",
- "waldo-core",
-]
-
-[[package]]
 name = "waldo-bar"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "futures",
  "gpui",
@@ -5938,10 +5929,19 @@ dependencies = [
 
 [[package]]
 name = "waldo-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "waldo-mcp"
+version = "0.4.0"
+dependencies = [
+ "base64",
+ "serde_json",
+ "waldo-core",
 ]
 
 [[package]]

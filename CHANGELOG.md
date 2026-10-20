@@ -6,6 +6,20 @@ Notable changes to Waldo, newest first. The format follows [Keep a Changelog](ht
 
 Nothing yet. Each pull request with a change people will notice adds a line here.
 
+## [0.4.0] - 2026-10-20: install from crates.io
+
+### Added
+
+- **`cargo install waldo-mcp`.** Waldo is on crates.io as `waldo-mcp` (the command line and the MCP server) and `waldo-core` (the tools). The Makefile install works as before, and it is still the one that builds the bar.
+- **`waldo-mcp`, a second binary.** It starts the MCP server with no arguments, the same as `waldo mcp`. MCP registries and clients start servers by the package name, so `{"command": "waldo-mcp"}` is enough.
+- **`waldo grant` builds the ask panel.** The panel's Swift source is now inside Waldo. When no panel sits next to the `waldo` binary, `waldo grant` builds one with swiftc into the Waldo folder (`~/Library/Application Support/Waldo/waldo-ask`), and the gates use it. Until a panel exists, a hard stop shows a plain system alert instead. `waldo status` says which panel is in use.
+- **A Linux build for MCP directories.** Directories such as Glama start a server on Linux to list its tools. Waldo now builds there and lists the same tools, and every tool answers that Waldo runs on macOS only. `docker/Dockerfile` is the image, and CI checks it on every push. Nothing changes on a Mac.
+
+### Changed
+
+- **The gate panel's source moved** from `helpers/ask.swift` to `crates/waldo-core/swift/ask.swift`, so it ships with the crate.
+- **`make install`** also puts `waldo-mcp` in `~/.local/bin`.
+
 ## [0.3.0] - 2026-10-20: OS Control is now Waldo
 
 OS Control has a new name and a new home: Waldo, at [justusewaldo/waldo](https://github.com/justusewaldo/waldo). The tools, the gates, the stop switch, and the checks work as before. These are the changes you will notice.
@@ -109,7 +123,8 @@ Then restart your Claude Code sessions. A running session keeps the old binary u
 - `os-bar`: a small native window that runs Claude Code tasks.
 - Four hard stops: money, sending as you, passwords and keys, and destructive changes. A stop switch, and a local audit log.
 
-[Unreleased]: https://github.com/justusewaldo/waldo/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/justusewaldo/waldo/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/justusewaldo/waldo/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/justusewaldo/waldo/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Veso-AI-Open-Source/os-control/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Veso-AI-Open-Source/os-control/tree/v0.1.0

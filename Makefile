@@ -5,11 +5,11 @@ BIN := $(HOME)/.local/bin
 # Release build of the tool, the bar, and the gate panel.
 build:
 	cargo build --release --workspace
-	swiftc -O helpers/ask.swift -o target/release/waldo-ask
+	swiftc -O crates/waldo-core/swift/ask.swift -o target/release/waldo-ask
 
 debug:
 	cargo build --workspace
-	swiftc -O helpers/ask.swift -o target/debug/waldo-ask
+	swiftc -O crates/waldo-core/swift/ask.swift -o target/debug/waldo-ask
 
 # Unit tests. They touch nothing on screen.
 test:
@@ -23,7 +23,7 @@ live: debug
 # old binary until they restart.
 install: build
 	install -d $(BIN)
-	install -m 755 target/release/waldo target/release/waldo-ask target/release/waldo-bar $(BIN)/
+	install -m 755 target/release/waldo target/release/waldo-mcp target/release/waldo-ask target/release/waldo-bar $(BIN)/
 
 # Gives the tools to every Claude Code session of this user.
 register:

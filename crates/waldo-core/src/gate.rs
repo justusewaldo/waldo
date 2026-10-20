@@ -433,12 +433,9 @@ pub fn pending() -> bool {
     true
 }
 
-/// The panel helper sits next to this binary.
+/// The panel helper: next to this binary, or the one `waldo grant` built.
 fn helper() -> Option<std::path::PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let exe = exe.canonicalize().unwrap_or(exe);
-    let path = exe.parent()?.join("waldo-ask");
-    path.is_file().then_some(path)
+    crate::panel::find()
 }
 
 /// Shows the panel: it never takes the keyboard, and Allow takes only a

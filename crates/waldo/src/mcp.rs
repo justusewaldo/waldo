@@ -5,6 +5,7 @@ use waldo_core::exec::{Executor, Output};
 use waldo_core::tools;
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
+use std::process::ExitCode;
 
 const VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 
@@ -53,6 +54,17 @@ pub fn handle(exec: &mut Executor, msg: &Value) -> Option<Value> {
             json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
         }
     })
+}
+
+/// Runs the server until stdin closes. Both binaries start it here.
+pub fn main() -> ExitCode {
+    match serve() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("waldo mcp: {e}");
+            ExitCode::from(1)
+        }
+    }
 }
 
 pub fn serve() -> io::Result<()> {

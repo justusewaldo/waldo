@@ -1,7 +1,14 @@
 [package]
 name = "waldo-core"
+description = "The tools behind Waldo: read the macOS accessibility tree, act on apps in the background, and gate every risky act behind a human yes."
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["mcp", "macos", "accessibility", "automation", "ai-agents"]
+categories = ["os::macos-apis", "accessibility", "api-bindings"]
 
 [dependencies]
 serde.workspace = true

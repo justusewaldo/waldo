@@ -1,0 +1,30 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.justusewaldo/waldo",
+  "title": "Waldo",
+  "description": "Hands for any AI agent on macOS. Asks you first before money, messages, passwords, or deletes.",
+  "version": "0.4.0",
+  "websiteUrl": "https://justusewaldo.com",
+  "repository": {
+    "url": "https://github.com/justusewaldo/waldo",
+    "source": "github",
+    "id": "1426747606"
+  },
+  "icons": [
+    {
+      "src": "https://justusewaldo.com/logo.png",
+      "mimeType": "image/png",
+      "sizes": ["512x512"]
+    }
+  ],
+  "packages": [
+    {
+      "registryType": "cargo",
+      "identifier": "waldo-mcp",
+      "version": "0.4.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

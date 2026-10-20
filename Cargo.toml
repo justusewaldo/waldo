@@ -4,14 +4,17 @@ members = ["crates/waldo-core", "crates/waldo", "crates/waldo-bar"]
 default-members = ["crates/waldo"]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/justusewaldo/waldo"
+homepage = "https://justusewaldo.com"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22"
-waldo-core = { path = "crates/waldo-core" }
+waldo-core = { path = "crates/waldo-core", version = "0.4.0" }
 
 [profile.release]
 opt-level = 3

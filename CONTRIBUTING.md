@@ -38,6 +38,8 @@ Versions follow [SemVer](https://semver.org/). The MCP server reports the worksp
 3. Open a pull request, wait for CI, and merge with rebase.
 4. Tag the merge on `main` and push the tag: `git tag -a v<version> -m "Waldo <version>"`, then `git push origin v<version>`.
 5. Publish a GitHub release from the tag, with that version's changelog entry as the notes.
+6. Publish the crates, core first: `cargo publish -p waldo-core`, then `cargo publish -p waldo-mcp`.
+7. Update the MCP Registry entry: set `version` in `server.json` (in both places), then run `mcp-publisher publish`.
 
 ## Commits
 

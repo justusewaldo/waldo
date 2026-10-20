@@ -36,7 +36,7 @@ Waldo is the pair of hands any AI can borrow. He sees every window, presses ever
 
 Four kinds of act always stop and ask you first: money, sending as you, passwords, and destructive changes. The agent cannot give its own yes. The panel takes no keys, and it refuses any click that did not come from your own mouse.
 
-> **New in 0.3.0:** OS Control is now Waldo. See the [changelog](CHANGELOG.md).
+> **New in 0.4.0:** install with `cargo install waldo-mcp`. OS Control became Waldo in 0.3.0. See the [changelog](CHANGELOG.md).
 
 > This hands an AI model the controls of your Mac. Read [Limits](#limits) before you turn it on.
 
@@ -54,6 +54,16 @@ make register    # hands the tools to Claude Code
 
 macOS gives the grants to the app that starts the process. For most people that is the terminal.
 
+**Or from crates.io.** The same server, without the bar. `waldo grant` also builds the ask panel once, from the source inside Waldo.
+
+```
+cargo install waldo-mcp     # installs waldo and waldo-mcp into ~/.cargo/bin
+waldo grant                 # Accessibility + Screen Recording, and the ask panel
+claude mcp add --scope user waldo -- waldo-mcp
+```
+
+The Makefile path above still works, and it is the one that builds the bar.
+
 **Any MCP agent.** Build and grant the same way, then add Waldo to your agent’s MCP settings:
 
 ```json
@@ -64,7 +74,7 @@ macOS gives the grants to the app that starts the process. For most people that 
 }
 ```
 
-Codex, Gemini CLI, Cursor and friends all take the same command: `waldo mcp`. macOS asks permission for whichever app starts it.
+Codex, Gemini CLI, Cursor and friends all take the same command: `waldo mcp`. macOS asks permission for whichever app starts it. `waldo-mcp`, with no arguments, starts the same server.
 
 Then ask your agent, in plain words:
 
@@ -203,9 +213,10 @@ Every tool call and every gate answer is one line in `~/Library/Application Supp
 
 ```
 crates/waldo-core   the tools: tree reader, input, screen, apps, gates, verification, audit log
-crates/waldo        the command line and the MCP server
-crates/waldo-bar    the bar, a small native window built with GPUI
-helpers/ask.swift   the gate panel, one Swift file
+                    (the crate waldo-core). swift/ask.swift is the gate panel, one Swift file.
+crates/waldo        the command line and the MCP server (the crate waldo-mcp: waldo and waldo-mcp)
+crates/waldo-bar    the bar, a small native window built with GPUI. Not published.
+docker/             a Linux image for MCP directories that list a server's tools there
 tests/              live checks on the real desktop
 demo/               the script that records the real app at work
 docs/media/         the banner, the GIFs, and the images in this README
@@ -216,7 +227,7 @@ SECURITY.md         how to report a security bug
 ```
 
 ```
-make test                      51 tests. They touch nothing on screen.
+make test                      54 tests. They touch nothing on screen.
 make live                      Live checks. Calculator only, in the background.
 python3 tests/foreground.py    Real key presses. Takes the focus for two seconds.
 make demo                      Records docs/media/real-demo.gif.
@@ -239,7 +250,7 @@ Bounded work, each item with a clear test:
 5. Wait until a page settles, with no fixed sleeps.
 6. Capture one window even when it is covered.
 7. Decide whether Save on a live web service deserves a fifth gate.
-8. A signed app bundle with its own grants.
+8. A signed app bundle with its own grants, and a prebuilt MCPB bundle, so no Rust toolchain is needed.
 9. Labels in other languages.
 
 Open bugs and planned work are tracked in [Issues](https://github.com/justusewaldo/waldo/issues).

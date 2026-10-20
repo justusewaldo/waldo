@@ -29,7 +29,37 @@ jobs:
       - name: "Lint: OS state is never read by parsing program output"
         run: cargo clippy -p waldo-core --locked -- -A clippy::all -D clippy::disallowed_methods
       - name: Gate panel helper
-        run: swiftc -O helpers/ask.swift -o "$RUNNER_TEMP/waldo-ask"
+        run: swiftc -O crates/waldo-core/swift/ask.swift -o "$RUNNER_TEMP/waldo-ask"
+
+  linux:
+    name: "Linux: the MCP server starts and lists its tools"
+    # MCP directories such as Glama start servers on Linux to list their tools.
+    # There, every Waldo tool answers that it runs on macOS only.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the command line and the MCP server
+        run: cargo build -p waldo-mcp --locked
+      - name: Unit tests that apply off macOS
+        run: cargo test -p waldo-core -p waldo-mcp --locked
+      - name: initialize, tools/list, and a tool call over stdio
+        run: |
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+            '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"see","arguments":{}}}' \
+            | ./target/debug/waldo-mcp > replies.jsonl
+          cat replies.jsonl
+          grep -q '"serverInfo":{"name":"waldo"' replies.jsonl
+          test "$(grep -o '"inputSchema"' replies.jsonl | wc -l)" -eq 8
+          grep -q 'runs on macOS only' replies.jsonl
+      - name: The Docker image directories use
+        run: |
+          docker build -f docker/Dockerfile -t waldo-mcp .
+          printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | docker run -i --rm waldo-mcp | grep -q '"name":"confirm"'
 
   privacy:
     name: Privacy check
