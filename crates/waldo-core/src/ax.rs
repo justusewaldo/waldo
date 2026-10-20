@@ -726,6 +726,28 @@ pub fn label_chain(el: &Element) -> (Vec<String>, bool) {
     (labels, false)
 }
 
+/// The control a click at a point means, when it can be pressed through
+/// accessibility: the element under the point, or the first control around
+/// it (the point often lands on an icon or a text inside a button).
+pub fn pressable(hit: &Element) -> Option<Element> {
+    let mut cur = Some(hit.clone());
+    for _ in 0..5 {
+        let e = cur?;
+        let d = e.describe();
+        if is_control(d.short.as_str()) {
+            return (press_by_point(d.short.as_str()) && e.actions().iter().any(|a| a == "AXPress")).then_some(e);
+        }
+        cur = e.element("AXParent");
+    }
+    None
+}
+
+/// Controls a press can stand in for a click on. Where you click on a
+/// stepper, a colour well, a row, or a cell matters, so those keep the pointer.
+pub fn press_by_point(short: &str) -> bool {
+    is_control(short) && !matches!(short, "stepper" | "colorwell" | "row" | "cell")
+}
+
 /// Roles where a click does something, as opposed to placing a caret.
 pub fn is_control(short: &str) -> bool {
     matches!(
@@ -792,6 +814,16 @@ mod tests {
         assert_eq!(clean("\u{200E}1,080\u{200E}", 20), "1,080");
         assert_eq!(clean("\u{F095} Call back", 40), "Call back");
         assert_eq!(clean("\u{F02B}", 40), "");
+    }
+
+    #[test]
+    fn a_press_stands_in_for_a_click_only_where_the_spot_does_not_matter() {
+        for short in ["button", "link", "checkbox", "radio", "popup", "menuitem", "tab", "switch", "disclosure"] {
+            assert!(press_by_point(short), "{short} should be pressed");
+        }
+        for short in ["stepper", "colorwell", "row", "cell", "textfield", "text", "image", "webarea", "other"] {
+            assert!(!press_by_point(short), "{short} should keep the pointer");
+        }
     }
 
     #[test]

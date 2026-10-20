@@ -4,7 +4,22 @@ Notable changes to Waldo, newest first. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
-Nothing yet. Each pull request with a change people will notice adds a line here.
+Vision first, with the accessibility tree working underneath. The model can act on what it sees in the screenshot, and Waldo still presses through accessibility, so the pointer stays put.
+
+### Changed
+
+- **Point, then press.** A click at x,y presses the control under that point through accessibility when it can: buttons, links, menus, checkboxes, and tabs. The pointer stays put and the app can stay in the background. Text fields, steppers, rows, and cells still take a real click.
+- **One call, not two.** When a press changes nothing, `click` clicks with the real pointer in the same call. It never does this after a hard stop, so an approved act is never done twice. When a field does not take a direct `set`, `type` types the text instead.
+- **A lean `see`.** It lists up to 40 controls and text in view. `max` lists more, including what is scrolled away, and `filter` finds one thing.
+
+### Measured
+
+The same task in Safari, through Claude Code on a claude.ai subscription, one run each: read a receipt that exists only as pixels, pick the vendor from a menu, type the total, and press an icon-only button.
+
+| | Before | After |
+|---|---|---|
+| With the element list | 12 calls, 126 s, 4,736 output tokens | 9 calls, 59 s, 1,902 output tokens |
+| By pixels only | 0 of 4 clicks without the pointer | 3 of 4 clicks without the pointer |
 
 ## [0.4.0] - 2026-10-20: install from crates.io
 

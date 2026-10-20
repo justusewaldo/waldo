@@ -8,9 +8,9 @@ These tools let you see and drive the user's Mac: every app, every window.
 
 How to work
 - Use the shell when a command does the job. Use these tools for what only the screen can do.
-- Call see first. It lists the controls of an app with ids, and it returns a screenshot.
-- Act on ids or labels, not on guessed positions. Use x,y only for things see does not list.
-- A click on an id presses the control without moving the pointer. That works on apps in the background, so the user can keep working. Prefer it.
+- Call see first. It returns a screenshot and a short list of the controls in view, with ids.
+- Act on what you see: an id or a label from the list, or x,y from the screenshot. Either way a click presses the control without moving the pointer when it can. That works on apps in the background, so the user can keep working.
+- Look closer with zoom when text is small. One screenshot is usually enough.
 - Keys and typed text go to the app in front. Pass `app` so the tool refuses if another app is in front.
 - After you act, call see again and check the result. Do not assume it worked.
 - Every x,y is a pixel in the last screenshot from see.
@@ -30,7 +30,7 @@ fn target_props() -> Value {
         "id": { "type": "integer", "description": "Line number of an element in the last see." },
         "label": { "type": "string", "description": "Label of an element. Exact match wins, then partial. Read fresh from the app." },
         "role": { "type": "string", "description": "Limit to one role, such as button, link, textfield, textarea, menuitem, checkbox, tab, row. A role with no label is enough when the window has only one such thing." },
-        "x": { "type": "number", "description": "Pixel in the last screenshot. Use only when there is no id or label." },
+        "x": { "type": "number", "description": "Pixel in the last screenshot." },
         "y": { "type": "number" },
         "app": { "type": "string", "description": "App name or bundle id. For label it says where to look. For x,y and keys it is a guard: the tool refuses if another app is there." }
     })
@@ -66,11 +66,11 @@ pub fn list() -> Value {
     json!([
         tool(
             "see",
-            "Look at the Mac. Returns the app in front, the windows on the display, a numbered list of the controls and text in one app's window (role, label, value, centre x,y, size), and a screenshot. Open menus are included. Ids are good until the next see.",
+            "Look at the Mac. Returns a screenshot, the app in front, the windows on the display, and a numbered list of the controls and text in view in one app's window (role, label, value, centre x,y, size). The list is short by default: pass max for more, or filter to find something. Open menus are included. Ids are good until the next see.",
             json!({
                 "app": { "type": "string", "description": "App to read, by name or bundle id. Default: the app in front. It can be in the background." },
                 "filter": { "type": "string", "description": "Keep only elements whose label, value, or role contains this." },
-                "max": { "type": "integer", "description": "Most elements to list. Default 120." },
+                "max": { "type": "integer", "description": "Most elements to list. Default 40, in view only. Passing max also lists what is scrolled away." },
                 "elements": { "type": "boolean", "description": "False skips the list. Default true." },
                 "screenshot": { "type": "boolean", "description": "False skips the image. Default true." },
                 "menubar": { "type": "boolean", "description": "True adds the app's menu bar titles." },
@@ -81,7 +81,7 @@ pub fn list() -> Value {
         ),
         tool(
             "click",
-            "Click one thing. With id or label it presses the control directly, with no pointer movement, even in a background app. If the control cannot be pressed that way, or you pass button, count, modifiers, or mouse, it brings the app to the front and uses the real pointer.",
+            "Click one thing: by id or label, or by x,y in the last screenshot. Either way it presses the control directly when it can, with no pointer movement, even in a background app. If the press changes nothing, it clicks with the real pointer in the same call, except after a hard stop. With button, count, modifiers, or mouse it always uses the real pointer.",
             with(target_props(), json!({
                 "button": { "type": "string", "enum": ["left", "right", "middle"] },
                 "count": { "type": "integer", "description": "2 for a double click." },
@@ -101,7 +101,7 @@ pub fn list() -> Value {
                 "app": { "type": "string", "description": "Guard: refuse if another app is in front." },
                 "clear": { "type": "boolean", "description": "True selects all first, so the text replaces what is there." },
                 "enter": { "type": "boolean", "description": "True presses Return after the text." },
-                "set": { "type": "boolean", "description": "True writes the value straight into the field with no key presses. Works in the background. Some web forms ignore it." }
+                "set": { "type": "boolean", "description": "True writes the value straight into the field with no key presses. Works in the background. If the field does not take it, the text is typed instead." }
             }),
             &["text"]
         ),

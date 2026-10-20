@@ -140,9 +140,9 @@ Checking costs about 90 ms on a click that changes something, and up to 0.6 s be
 
 | Tool | What it does |
 |---|---|
-| `see` | Lists the controls of one app with ids, and returns a screenshot. Works on apps in the background. |
-| `click` | Presses a control by id, label, or role with no pointer movement. Falls back to the real pointer when it must. Says whether the window changed. |
-| `type` | Types into the focused field, or focuses a field first and checks that the focus landed. Says when the field already held text, and reads it back. It can also set a field's text with no key presses. |
+| `see` | Returns a screenshot and a short list of the controls in view, with ids. Works on apps in the background. `zoom` gives a close-up for small text. |
+| `click` | Clicks by id, label, or x,y from the screenshot. Either way it presses the control with no pointer movement when it can. If a press changes nothing, it clicks with the real pointer in the same call, but never repeats an act that passed a hard stop. Says whether the window changed. |
+| `type` | Types into the focused field, or focuses a field first and checks that the focus landed. Says when the field already held text, and reads it back. It can also set a field's text with no key presses, and types it instead when the field does not take it. |
 | `key` | Presses keys such as `cmd+s`. |
 | `scroll` | Scrolls by lines. Passes the gate like every other act. |
 | `drag` | Presses on one thing and releases on another. |

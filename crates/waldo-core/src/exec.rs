@@ -80,6 +80,43 @@ fn in_view(f: &Rect) -> bool {
     f.w >= 3.0 && f.h >= 3.0
 }
 
+/// How many elements `see` lists when not asked for more.
+const LEAN_MAX: usize = 40;
+
+/// Picks which elements a `see` lists. `ranks` holds one rank per element, in
+/// tree order: 0 for a control in view, 1 for text in view, 2 for a control
+/// scrolled away, 3 for text scrolled away. Lower ranks fill the room first,
+/// and only ranks below `upto` are listed. Returns positions in tree order.
+fn pick(ranks: &[u8], max: usize, upto: u8) -> Vec<usize> {
+    let mut picked: Vec<usize> = Vec::new();
+    for r in 0..upto {
+        let room = max.saturating_sub(picked.len());
+        picked.extend((0..ranks.len()).filter(|&k| ranks[k] == r).take(room));
+    }
+    picked.sort_unstable();
+    picked
+}
+
+#[cfg(test)]
+mod pick_tests {
+    use super::pick;
+
+    #[test]
+    fn controls_in_view_fill_the_room_first_and_order_is_kept() {
+        // text, control, scrolled control, control, text
+        let ranks = [1, 0, 2, 0, 1];
+        assert_eq!(pick(&ranks, 2, 4), vec![1, 3]);
+        assert_eq!(pick(&ranks, 3, 4), vec![0, 1, 3]);
+        assert_eq!(pick(&ranks, 10, 4), vec![0, 1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn lean_leaves_out_what_is_scrolled_away() {
+        let ranks = [1, 0, 2, 0, 3];
+        assert_eq!(pick(&ranks, 40, 2), vec![0, 1, 3]);
+    }
+}
+
 fn quote(label: &str) -> String {
     format!("\"{}\"", label.replace('"', "'"))
 }
@@ -393,14 +430,28 @@ impl Executor {
     }
 
     /// Waits up to half a second for the fingerprint to move.
-    fn change_note(&mut self, app: &AppInfo, target: Option<&Element>, before: u64) -> &'static str {
+    fn changed(&mut self, app: &AppInfo, target: Option<&Element>, before: u64) -> bool {
         for wait in [90u64, 160, 250] {
             sleep(Duration::from_millis(wait));
             if self.digest(app, target) != before {
-                return "Verified: the window changed.";
+                return true;
             }
         }
-        "No change was seen within half a second. Call see to check."
+        false
+    }
+
+    fn change_note(&mut self, app: &AppInfo, target: Option<&Element>, before: u64) -> &'static str {
+        if self.changed(app, target, before) {
+            "Verified: the window changed."
+        } else {
+            "No change was seen within half a second. Call see to check."
+        }
+    }
+
+    /// True when an act would stop at a hard stop. A press that passed one is
+    /// never repeated, so a fallback can never pay or send twice.
+    fn would_stop(&self, act: &Act) -> bool {
+        self.policy.as_ref().map(|p| gate::evaluate(p, act).is_some()).unwrap_or(true)
     }
 
     // ---- see ----------------------------------------------------------
@@ -409,7 +460,10 @@ impl Executor {
         let want_shot = b(args, "screenshot", true);
         let want_tree = b(args, "elements", true);
         let filter = s(args, "filter").map(str::to_lowercase);
-        let max = n(args, "max").map(|v| v as usize).unwrap_or(120).clamp(1, 600);
+        // Lean by default: the screenshot leads, and the list holds what is
+        // in view, up to 40. max or filter asks for more, scrolled away too.
+        let lean = n(args, "max").is_none() && filter.is_none();
+        let max = n(args, "max").map(|v| v as usize).unwrap_or(LEAN_MAX).clamp(1, 600);
         let front = apps::frontmost();
         let app = match self.app_arg(args)? {
             Some(a) => a,
@@ -538,17 +592,18 @@ impl Executor {
                     (false, false) => 3,
                 }
             };
-            let mut picked: Vec<usize> = Vec::new();
-            for r in 0..4u8 {
-                let room = max.saturating_sub(picked.len());
-                picked.extend(pool.iter().copied().filter(|&i| rank(i) == r).take(room));
-            }
-            picked.sort_unstable();
+            let ranks: Vec<u8> = pool.iter().map(|&i| rank(i)).collect();
+            let picked: Vec<usize> = pick(&ranks, max, if lean { 2 } else { 4 }).into_iter().map(|k| pool[k]).collect();
             self.table = picked.iter().map(|&i| walk.nodes[i].clone()).collect();
 
             let mut head = format!("elements in {}: {} shown", app.name, self.table.len());
             if total > self.table.len() {
-                head.push_str(&format!(" of {total}. Pass filter or a larger max to see the rest"));
+                head.push_str(&format!(" of {total}"));
+                head.push_str(if lean {
+                    ", in view only. Pass max for more, scrolled away too, or filter to find one"
+                } else {
+                    ". Pass filter or a larger max to see the rest"
+                });
             }
             if walk.truncated {
                 head.push_str(". The tree was too large to read in full");
@@ -725,14 +780,27 @@ impl Executor {
                     act.labels.push(Labeled { label: label.clone(), control: actionable || in_control });
                 }
                 let what = Self::describe_target(&short, &label);
+                let gated = self.would_stop(&act);
                 let t = self.pass_gate(&act, &format!("Click {what}."))?;
 
+                // Press through accessibility first. If the press changes
+                // nothing, click with the pointer in this same call, unless the
+                // act passed a hard stop: that is never done twice.
                 let plain = button == Button::Left && count == 1 && flags == 0 && !force_mouse;
+                let mut fallback = "";
                 if plain && el.actions().iter().any(|a| a == "AXPress") {
                     let before = self.digest(&app, Some(&el));
                     if el.perform(&t, "AXPress").is_ok() {
-                        let note = self.change_note(&app, Some(&el), before);
-                        return done(format!("Pressed {what} in {}. {note}", app.name));
+                        if self.changed(&app, Some(&el), before) {
+                            return done(format!("Pressed {what} in {}. Verified: the window changed.", app.name));
+                        }
+                        if gated {
+                            return done(format!(
+                                "Pressed {what} in {}. No change was seen within half a second. It was not pressed again, because it passed a hard stop. Call see to check.",
+                                app.name
+                            ));
+                        }
+                        fallback = "The press changed nothing, so it was clicked with the pointer. ";
                     }
                 }
                 self.bring_front(&t, &app)?;
@@ -755,7 +823,7 @@ impl Executor {
                 let before = self.digest(&app, Some(&el));
                 input::click(&t, x, y, button, count, flags);
                 let note = self.change_note(&app, Some(&el), before);
-                done(format!("Clicked {what} in {} with the mouse. {note}", app.name))
+                done(format!("{fallback}Clicked {what} in {} with the mouse. {note}", app.name))
             }
             Target::Point { x, y } => {
                 if (0.0..=3.0).contains(&x) && (0.0..=3.0).contains(&y) {
@@ -780,11 +848,39 @@ impl Executor {
                     what = Self::describe_target(&d.short, chain.first().map(String::as_str).unwrap_or(""));
                     act.labels = chain.into_iter().map(|l| Labeled { label: l, control: in_control }).collect();
                 }
+                let gated = self.would_stop(&act);
                 let t = self.pass_gate(&act, &format!("Click {what}."))?;
+
+                // Point, then press: when the control under the point can be
+                // pressed through accessibility, press it. The pointer stays
+                // put and the app can stay in the background. The pointer is
+                // the fallback, never after a hard stop.
+                let plain = button == Button::Left && count == 1 && flags == 0 && !force_mouse;
+                let mut fallback = "";
+                if plain {
+                    if let Some(ctl) = hit.as_ref().and_then(ax::pressable) {
+                        let before = self.digest(&app, Some(&ctl));
+                        if ctl.perform(&t, "AXPress").is_ok() {
+                            if self.changed(&app, Some(&ctl), before) {
+                                return done(format!(
+                                    "Pressed {what} in {} at that point, without moving the pointer. Verified: the window changed.",
+                                    app.name
+                                ));
+                            }
+                            if gated {
+                                return done(format!(
+                                    "Pressed {what} in {}. No change was seen within half a second. It was not pressed again, because it passed a hard stop. Call see to check.",
+                                    app.name
+                                ));
+                            }
+                            fallback = "The press changed nothing, so it was clicked with the pointer. ";
+                        }
+                    }
+                }
                 let before = self.digest(&app, hit.as_ref());
                 input::click(&t, x, y, button, count, flags);
                 let note = self.change_note(&app, hit.as_ref(), before);
-                done(format!("Clicked {what} in {} with the mouse. {note}", app.name))
+                done(format!("{fallback}Clicked {what} in {} with the mouse. {note}", app.name))
             }
         }
     }
@@ -813,23 +909,29 @@ impl Executor {
             return Err("type takes id or label. Click the point first, then type.".into());
         }
 
+        // A direct set works in the background. When the field does not take
+        // it (many web forms ignore it), type the text instead, in this call.
+        let mut set_note = "";
         if b(args, "set", false) {
-            let Some(Target::Node { el, short, label, pid, .. }) = target else {
+            let Some(Target::Node { el, short, label, pid, .. }) = &target else {
                 return Err("set needs an id or a label".into());
             };
-            let app = apps::resolve(pid).ok_or("the app of that element is gone. Call see again.")?;
+            let app = apps::resolve(*pid).ok_or("the app of that element is gone. Call see again.")?;
             let mut act = self.act("type", &app);
             act.focus_role = short.clone();
             self.hide_text = short == "securefield";
-            let what = Self::describe_target(&short, &label);
+            let what = Self::describe_target(short, label);
             let t = self.pass_gate(&act, &format!("Set the text of {what} ({chars} characters)."))?;
             el.set_text(&t, "AXValue", &text)?;
-            let note = match el.text("AXValue") {
-                Some(v) if v == text => "Verified: the field holds the new text.",
-                Some(_) => "The field shows different text than was set. Call see to check.",
-                None => "Could not read the field back to check.",
-            };
-            return done(format!("Set {what} in {} to {chars} characters. {note}", app.name));
+            match el.text("AXValue") {
+                Some(v) if v == text => {
+                    return done(format!("Set {what} in {} to {chars} characters. Verified: the field holds the new text.", app.name))
+                }
+                None => {
+                    return done(format!("Set {what} in {} to {chars} characters. Could not read the field back to check.", app.name))
+                }
+                Some(_) => set_note = "The field did not take the direct value, so it was typed instead. ",
+            }
         }
 
         // With a target, put the focus on it and check it got there before
@@ -903,7 +1005,8 @@ impl Executor {
         };
 
         let key = |name: &str| input::parse_chord(name).expect("built-in chord");
-        let clear = b(args, "clear", false);
+        // After a direct set that did not stick, replace whatever it left.
+        let clear = b(args, "clear", false) || !set_note.is_empty();
         if clear {
             input::press(&t, &key("cmd+a"));
             sleep(Duration::from_millis(50));
@@ -980,7 +1083,7 @@ impl Executor {
             });
         }
         done(format!(
-            "Typed {chars} characters into {field} in {}{}. {}",
+            "{set_note}Typed {chars} characters into {field} in {}{}. {}",
             front.name,
             if enter { ", then pressed Return" } else { "" },
             notes.trim_end()
