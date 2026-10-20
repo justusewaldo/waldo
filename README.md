@@ -9,6 +9,7 @@
 
 <p align="center">
   <a href="https://github.com/justusewaldo/waldo/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/justusewaldo/waldo/ci.yml?branch=main&style=flat-square&label=CI&labelColor=1B1A18&color=FF6A2B"></a>
+  <a href="https://crates.io/crates/waldo-mcp"><img alt="crates.io: waldo-mcp" src="https://img.shields.io/crates/v/waldo-mcp?style=flat-square&logo=rust&logoColor=white&label=crates.io&labelColor=1B1A18&color=FF6A2B"></a>
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-FF6A2B?style=flat-square&labelColor=1B1A18"></a>
   <a href="#limits"><img alt="macOS on Apple silicon" src="https://img.shields.io/badge/macOS-Apple%20silicon-FF6A2B?style=flat-square&logo=apple&logoColor=white&labelColor=1B1A18"></a>
   <a href="https://modelcontextprotocol.io"><img alt="MCP: any agent" src="https://img.shields.io/badge/MCP-any%20agent-FF6A2B?style=flat-square&logo=modelcontextprotocol&logoColor=white&labelColor=1B1A18"></a>
