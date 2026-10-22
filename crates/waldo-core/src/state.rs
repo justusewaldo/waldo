@@ -1,4 +1,5 @@
-//! Files that outlive one process: the stop switch and the audit log.
+//! Files that outlive one process: the stop switch, the bypass permissions
+//! switch, and the audit log.
 //!
 //! Everything lives in `~/Library/Application Support/Waldo`. Set
 //! `WALDO_HOME` to move it, which the tests do.
@@ -7,7 +8,7 @@ use serde_json::{json, Value};
 use std::fs;
 use std::io::Write;
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub fn dir() -> PathBuf {
@@ -46,8 +47,16 @@ pub fn stop_reason() -> String {
     fs::read_to_string(stop_file()).unwrap_or_default().trim().to_string()
 }
 
+/// Writes a switch in one rename, so a reader sees all of it or none of it.
+fn throw(file: &Path, reason: &str) {
+    let tmp = file.with_extension("writing");
+    if fs::write(&tmp, format!("{} {}\n", now(), reason)).is_ok() {
+        let _ = fs::rename(&tmp, file);
+    }
+}
+
 pub fn stop(reason: &str) {
-    let _ = fs::write(stop_file(), format!("{} {}\n", now(), reason));
+    throw(&stop_file(), reason);
     audit(json!({ "event": "stop", "reason": reason }));
 }
 
@@ -58,6 +67,59 @@ pub fn resume() -> bool {
         audit(json!({ "event": "resume" }));
     }
     was
+}
+
+fn bypass_file() -> PathBuf {
+    dir().join("BYPASS")
+}
+
+/// True when bypass permissions mode is on, from `WALDO_BYPASS` in the
+/// environment or from `waldo bypass on`. Hard stops are logged and allowed
+/// without asking.
+pub fn bypassed() -> bool {
+    bypassed_with(|k| std::env::var(k).ok(), bypass_file().exists())
+}
+
+pub fn bypassed_with(env: impl Fn(&str) -> Option<String>, file_exists: bool) -> bool {
+    if let Some(v) = env("WALDO_BYPASS") {
+        let v = v.trim().to_lowercase();
+        if matches!(v.as_str(), "1" | "on" | "true" | "yes") {
+            return true;
+        }
+        if matches!(v.as_str(), "0" | "off" | "false" | "no") {
+            return false;
+        }
+    }
+    file_exists
+}
+
+pub fn bypass_reason() -> String {
+    if let Some(v) = std::env::var("WALDO_BYPASS").ok().filter(|v| !v.trim().is_empty()) {
+        let low = v.trim().to_lowercase();
+        if matches!(low.as_str(), "1" | "on" | "true" | "yes") {
+            return "WALDO_BYPASS".into();
+        }
+    }
+    fs::read_to_string(bypass_file()).unwrap_or_default().trim().to_string()
+}
+
+/// Turns bypass permissions mode on or off across sessions. Returns true if
+/// the switch changed.
+pub fn set_bypass(on: bool, reason: &str) -> bool {
+    let was = bypass_file().exists();
+    if on {
+        throw(&bypass_file(), reason);
+        if !was {
+            audit(json!({ "event": "bypass", "state": "on", "reason": reason }));
+        }
+        !was
+    } else {
+        let _ = fs::remove_file(bypass_file());
+        if was {
+            audit(json!({ "event": "bypass", "state": "off", "reason": reason }));
+        }
+        was
+    }
 }
 
 pub fn audit_path() -> PathBuf {
@@ -105,6 +167,26 @@ pub fn format_utc(secs: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stop_resume_and_bypass_switches_work() {
+        let home = std::env::temp_dir().join(format!("waldo-core-state-{}", std::process::id()));
+        std::env::set_var("WALDO_HOME", &home);
+        resume();
+        assert!(!stopped());
+        stop("a test");
+        assert!(stopped());
+        assert!(resume());
+        assert!(!stopped());
+        assert!(!bypassed());
+        assert!(set_bypass(true, "a test"));
+        assert!(bypassed());
+        assert!(!bypassed_with(|_| Some("off".into()), true));
+        assert!(bypassed_with(|_| Some("1".into()), false));
+        assert!(set_bypass(false, "a test"));
+        assert!(!bypassed());
+        let _ = fs::remove_dir_all(&home);
+    }
 
     #[test]
     fn utc_format_matches_known_instants() {

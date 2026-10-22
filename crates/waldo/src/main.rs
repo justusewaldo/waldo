@@ -15,6 +15,8 @@ waldo: hands for every AI on this Mac
   waldo mcp                 Run as an MCP server on stdio. Your agent starts this.
   waldo status              Show grants, displays, the app in front, and the stop switch.
   waldo grant               Ask macOS for the grants and open the right Settings panes.
+  waldo bypass [on|off]     Turn bypass permissions mode on or off across sessions.
+  waldo exhaust [on|off|clear] Show or manage learned UI exhaust (rank-0 controls, field physics).
   waldo stop [reason]       Stop every session now. Nothing runs until resume.
   waldo resume              Clear the stop switch.
   waldo call TOOL [JSON]    Run one tool. Add --image PATH to save the screenshot.

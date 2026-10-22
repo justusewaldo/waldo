@@ -251,6 +251,38 @@ pub fn type_text(_t: &Ticket, text: &str) {
     }
 }
 
+/// Types text in 16-unit Unicode chunks for real text controls (`textfield`,
+/// `textarea`, `searchfield`, `combobox`) where 800-character messages would
+/// otherwise take 15 seconds key-by-key.
+pub fn type_text_chunked(_t: &Ticket, text: &str) {
+    let src = Source::new();
+    let send = |units: &[u16]| {
+        for down in [true, false] {
+            let ev = unsafe { CGEventCreateKeyboardEvent(src.0, 0, down) };
+            unsafe {
+                CGEventSetFlags(ev, 0);
+                CGEventKeyboardSetUnicodeString(ev, units.len() as _, units.as_ptr());
+            }
+            post(ev);
+            ms(3);
+        }
+        ms(4);
+    };
+    let mut chunk: Vec<u16> = Vec::with_capacity(20);
+    for ch in text.chars() {
+        let mut buf = [0u16; 2];
+        let units = ch.encode_utf16(&mut buf);
+        if chunk.len() + units.len() > 16 {
+            send(&chunk);
+            chunk.clear();
+        }
+        chunk.extend_from_slice(units);
+    }
+    if !chunk.is_empty() {
+        send(&chunk);
+    }
+}
+
 pub fn modifier_flags(names: &[String]) -> Result<u64, String> {
     let mut flags = 0;
     for n in names {

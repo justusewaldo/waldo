@@ -3,6 +3,7 @@
 
 use crate::apps::{self, AppInfo, Seen};
 use crate::ax::{self, Element, Node, WalkOpts};
+use crate::exhaust::{self, Exhaust};
 use crate::gate::{self, Act, Answer, Gate, Labeled, Policy, Ticket};
 use crate::geom::{Rect, View};
 use crate::input::{self, Button, Chord};
@@ -30,6 +31,31 @@ another way. Tell the user you have stopped and wait. They resume with `waldo re
 
 const DENIED: &str = "Nothing was done. Do not retry it and do not reach the same result another \
 way. Tell the user what you wanted to do and why.";
+
+/// True when `(x, y)` sits on the outer right edge of a display, with no
+/// other display immediately to its right.
+fn in_right_edge(x: f64, y: f64) -> bool {
+    let displays = screen::displays();
+    for d in &displays {
+        let b = d.bounds;
+        let max_x = b.x + b.w;
+        if y >= b.y && y <= b.y + b.h && x >= max_x - 4.0 && x <= max_x {
+            let beyond_x = max_x + 4.0;
+            if !displays.iter().any(|o| o.index != d.index && o.bounds.contains(beyond_x, y)) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// The stop switch was thrown in the middle of typing.
+fn stopped_after(done: &str) -> String {
+    format!(
+        "Stopped by the user after {done}. The rest was not done. Do not retry and do not look for \
+another way. Tell the user you have stopped and wait. They resume with `waldo resume`."
+    )
+}
 
 const BROWSERS: &[&str] = &[
     "com.apple.safari", "com.google.chrome", "com.brave.browser", "com.microsoft.edgemac",
@@ -60,6 +86,8 @@ pub struct Executor {
     gate_timeout: Duration,
     max_edge: f64,
     hide_text: bool,
+    exhaust: Exhaust,
+    domains: HashMap<i32, String>,
 }
 
 fn s<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
@@ -115,6 +143,16 @@ mod pick_tests {
         let ranks = [1, 0, 2, 0, 3];
         assert_eq!(pick(&ranks, 40, 2), vec![0, 1, 3]);
     }
+
+    #[test]
+    fn known_exhaust_controls_make_the_cut_ahead_of_unvisited_links() {
+        let mut ranks = vec![1u8; 45];
+        ranks.extend([0, 0, 0]);
+        let picked = pick(&ranks, 40, 3);
+        assert_eq!(picked.len(), 40);
+        assert!(picked.contains(&45) && picked.contains(&46) && picked.contains(&47));
+        assert_eq!(&picked[37..], &[45, 46, 47]);
+    }
 }
 
 fn quote(label: &str) -> String {
@@ -151,6 +189,8 @@ impl Executor {
             gate_timeout: Duration::from_secs(gate_secs),
             max_edge,
             hide_text: false,
+            exhaust: Exhaust::load(),
+            domains: HashMap::new(),
         }
     }
 
@@ -213,6 +253,10 @@ impl Executor {
             state::stop("the pointer is in the top-left corner");
             return Err(STOPPED.into());
         }
+        if in_right_edge(cx, cy) {
+            state::stop("the pointer is at the right edge");
+            return Err(STOPPED.into());
+        }
         if !ax::trusted() {
             return Err(ax::error_text(crate::ffi::kAXErrorAPIDisabled));
         }
@@ -228,10 +272,31 @@ impl Executor {
         }
     }
 
+    fn front_or_last(&self) -> Option<AppInfo> {
+        let front = apps::frontmost();
+        if let Some(a) = &front {
+            if !a.name.starts_with("waldo-") {
+                return front;
+            }
+        }
+        if let Some(last) = self.exhaust.last_app() {
+            if let Ok(found) = apps::find(last) {
+                if let Some(a) = found.into_iter().next() {
+                    return Some(a);
+                }
+            }
+        }
+        front
+    }
+
+    fn domain_for(&self, app: &AppInfo) -> String {
+        self.domains.get(&app.pid).cloned().unwrap_or_else(|| "*".into())
+    }
+
     fn target_app(&self, args: &Value) -> Result<AppInfo, String> {
         match self.app_arg(args)? {
             Some(a) => Ok(a),
-            None => apps::frontmost().ok_or_else(|| "could not tell which app is in front".into()),
+            None => self.front_or_last().ok_or_else(|| "could not tell which app is in front".into()),
         }
     }
 
@@ -286,6 +351,12 @@ impl Executor {
                 found = self.walk_once(app, with_menubar);
             }
         }
+        if let Some(u) = &found.1.url {
+            let dom = exhaust::extract_domain(Some(u));
+            if dom != "*" {
+                self.domains.insert(app.pid, dom);
+            }
+        }
         found
     }
 
@@ -324,6 +395,10 @@ impl Executor {
                 url = u;
             }
         }
+        let dom = exhaust::extract_domain(Some(&url));
+        if dom != "*" {
+            self.domains.insert(app.pid, dom);
+        }
         (title, url)
     }
 
@@ -340,13 +415,26 @@ impl Executor {
     }
 
     /// Stops for the person when a hard stop applies. `what` is one plain
-    /// sentence that says what is about to happen.
+    /// sentence that says what is about to happen. In bypass permissions mode
+    /// the gate still logs the hit and lets the act through without asking.
     fn pass_gate(&mut self, act: &Act, what: &str) -> Result<Ticket, String> {
         let policy = self.policy.as_ref().map_err(|e| e.clone())?;
         let passes = &mut self.passes;
         let windows = &mut self.windows;
         let timeout = self.gate_timeout;
+        let bypass = state::bypassed();
         gate::admit(policy, act, |hit| {
+            if bypass {
+                state::audit(json!({
+                    "event": "gate",
+                    "gate": hit.gate.id(),
+                    "summary": what,
+                    "place": hit.place,
+                    "why": hit.why,
+                    "answer": "bypass",
+                }));
+                return Ok(());
+            }
             let now = Instant::now();
             if let Some(until) = passes.remove(&hit.gate) {
                 if now < until {
@@ -467,8 +555,9 @@ impl Executor {
         let front = apps::frontmost();
         let app = match self.app_arg(args)? {
             Some(a) => a,
-            None => front.clone().ok_or("could not tell which app is in front")?,
+            None => self.front_or_last().ok_or("could not tell which app is in front")?,
         };
+        self.exhaust.record_app(&app.name);
         let trusted = ax::trusted();
         let (win, walk) = if trusted && want_tree {
             self.walk_app(&app, b(args, "menubar", false))
@@ -581,19 +670,28 @@ impl Executor {
             };
             let pool: Vec<usize> = (0..walk.nodes.len()).filter(|&i| matches(&walk.nodes[i])).collect();
             let total = pool.len();
-            // When the list is too long, keep what is in view and can be
-            // acted on first, then text in view, then what is scrolled away.
+            let domain = self.domain_for(&app);
+            // When the list is too long, keep verified controls from exhaust
+            // first, then other controls in view, then text in view, then
+            // what is scrolled away.
             let rank = |i: usize| -> u8 {
                 let node = &walk.nodes[i];
-                match (in_view(&node.frame), node.actionable) {
-                    (true, true) => 0,
-                    (true, false) => 1,
-                    (false, true) => 2,
-                    (false, false) => 3,
+                let known = node.actionable
+                    && self
+                        .exhaust
+                        .control_hits(&app.name, &domain, &node.short, &node.label)
+                        > 0;
+                match (in_view(&node.frame), node.actionable, known) {
+                    (true, true, true) => 0,
+                    (true, true, false) => 1,
+                    (true, false, _) => 2,
+                    (false, true, true) => 3,
+                    (false, true, false) => 4,
+                    (false, false, _) => 5,
                 }
             };
             let ranks: Vec<u8> = pool.iter().map(|&i| rank(i)).collect();
-            let picked: Vec<usize> = pick(&ranks, max, if lean { 2 } else { 4 }).into_iter().map(|k| pool[k]).collect();
+            let picked: Vec<usize> = pick(&ranks, max, if lean { 3 } else { 6 }).into_iter().map(|k| pool[k]).collect();
             self.table = picked.iter().map(|&i| walk.nodes[i].clone()).collect();
 
             let mut head = format!("elements in {}: {} shown", app.name, self.table.len());
@@ -792,6 +890,12 @@ impl Executor {
                     let before = self.digest(&app, Some(&el));
                     if el.perform(&t, "AXPress").is_ok() {
                         if self.changed(&app, Some(&el), before) {
+                            let dom = self.domain_for(&app);
+                            self.exhaust.record_app(&app.name);
+                            self.exhaust.record_control(&app.name, &dom, &short, &label);
+                            if label.contains("Discard draft") {
+                                self.exhaust.record_field(&app.name, &dom, "textarea", "Message Body", None, Some(true));
+                            }
                             return done(format!("Pressed {what} in {}. Verified: the window changed.", app.name));
                         }
                         if gated {
@@ -823,11 +927,22 @@ impl Executor {
                 let before = self.digest(&app, Some(&el));
                 input::click(&t, x, y, button, count, flags);
                 let note = self.change_note(&app, Some(&el), before);
+                if note.starts_with("Verified") {
+                    let dom = self.domain_for(&app);
+                    self.exhaust.record_app(&app.name);
+                    self.exhaust.record_control(&app.name, &dom, &short, &label);
+                    if label.contains("Discard draft") {
+                        self.exhaust.record_field(&app.name, &dom, "textarea", "Message Body", None, Some(true));
+                    }
+                }
                 done(format!("{fallback}Clicked {what} in {} with the mouse. {note}", app.name))
             }
             Target::Point { x, y } => {
                 if (0.0..=3.0).contains(&x) && (0.0..=3.0).contains(&y) {
                     return Err("that point is the stop corner. Pick another point.".into());
+                }
+                if in_right_edge(x, y) {
+                    return Err("that point is on the right-edge stop zone. Pick another point.".into());
                 }
                 let hit = Element::at_point(x, y);
                 let owner = hit.as_ref().and_then(|h| h.pid()).and_then(apps::resolve);
@@ -912,7 +1027,18 @@ impl Executor {
         // A direct set works in the background. When the field does not take
         // it (many web forms ignore it), type the text instead, in this call.
         let mut set_note = "";
-        if b(args, "set", false) {
+        let mut want_set = b(args, "set", false);
+        if args.get("set").is_none() && !enter && !b(args, "clear", false) {
+            if let Some(Target::Node { short, label, pid, .. }) = &target {
+                if let Some(app) = apps::resolve(*pid) {
+                    let dom = self.domain_for(&app);
+                    if self.exhaust.field(&app.name, &dom, short, label).and_then(|f| f.set_works) == Some(true) {
+                        want_set = true;
+                    }
+                }
+            }
+        }
+        if want_set {
             let Some(Target::Node { el, short, label, pid, .. }) = &target else {
                 return Err("set needs an id or a label".into());
             };
@@ -923,14 +1049,21 @@ impl Executor {
             let what = Self::describe_target(short, label);
             let t = self.pass_gate(&act, &format!("Set the text of {what} ({chars} characters)."))?;
             el.set_text(&t, "AXValue", &text)?;
+            let dom = self.domain_for(&app);
             match el.text("AXValue") {
                 Some(v) if v == text => {
+                    self.exhaust.record_app(&app.name);
+                    self.exhaust.record_control(&app.name, &dom, short, label);
+                    self.exhaust.record_field(&app.name, &dom, short, label, Some(true), None);
                     return done(format!("Set {what} in {} to {chars} characters. Verified: the field holds the new text.", app.name))
                 }
                 None => {
                     return done(format!("Set {what} in {} to {chars} characters. Could not read the field back to check.", app.name))
                 }
-                Some(_) => set_note = "The field did not take the direct value, so it was typed instead. ",
+                Some(_) => {
+                    self.exhaust.record_field(&app.name, &dom, short, label, Some(false), None);
+                    set_note = "The field did not take the direct value, so it was typed instead. ";
+                }
             }
         }
 
@@ -1005,13 +1138,33 @@ impl Executor {
         };
 
         let key = |name: &str| input::parse_chord(name).expect("built-in chord");
-        // After a direct set that did not stick, replace whatever it left.
-        let clear = b(args, "clear", false) || !set_note.is_empty();
+        let (t_role, t_label) = match &target {
+            Some(Target::Node { short, label, .. }) if !label.is_empty() => {
+                (short.clone(), label.clone())
+            }
+            _ => (focus.short.clone(), focus.label.clone()),
+        };
+        let dom = self.domain_for(&front);
+        self.exhaust.record_app(&front.name);
+        let auto_clear = args.get("clear").is_none()
+            && had.unwrap_or(0) > 0
+            && self
+                .exhaust
+                .field(&front.name, &dom, &t_role, &t_label)
+                .is_some_and(|m| m.needs_clear);
+        // After a direct set that did not stick, or on a known dirty field, replace whatever it left.
+        let clear = b(args, "clear", false) || !set_note.is_empty() || auto_clear;
         if clear {
             input::press(&t, &key("cmd+a"));
             sleep(Duration::from_millis(50));
         }
 
+        let fast_chunk = exhaust::enabled()
+            && chars > 32
+            && matches!(
+                t_role.as_str(),
+                "textfield" | "textarea" | "searchfield" | "combobox"
+            );
         let mut typed = 0usize;
         let mut buf = String::new();
         let still_front = |pid: i32| apps::front_is(pid) == Seen::Yes(());
@@ -1019,10 +1172,17 @@ impl Executor {
             if buf.is_empty() {
                 return Ok(());
             }
+            if state::stopped() {
+                return Err(stopped_after(&format!("{} characters", *typed)));
+            }
             if !still_front(front.pid) {
                 return Err(format!("The focus left {} after {} characters. Typing stopped there.", front.name, *typed));
             }
-            input::type_text(&t, buf);
+            if fast_chunk {
+                input::type_text_chunked(&t, buf);
+            } else {
+                input::type_text(&t, buf);
+            }
             *typed += buf.chars().count();
             buf.clear();
             Ok(())
@@ -1081,6 +1241,10 @@ impl Executor {
                 Some(_) => "The field does not show the text. Call see to check.",
                 None => "Could not read the field back to check.",
             });
+        }
+        self.exhaust.record_control(&front.name, &dom, &t_role, &t_label);
+        if b(args, "clear", false) {
+            self.exhaust.record_field(&front.name, &dom, &t_role, &t_label, None, Some(true));
         }
         done(format!(
             "{set_note}Typed {chars} characters into {field} in {}{}. {}",
@@ -1389,6 +1553,16 @@ impl Executor {
             .and_then(Gate::parse)
             .ok_or("gate is required: money, sending, passwords, or destructive")?;
         let summary = s(args, "summary").ok_or("summary is required: one plain sentence on what you will do")?;
+        if state::bypassed() {
+            state::audit(json!({
+                "event": "gate",
+                "gate": gate.id(),
+                "summary": ax::clean(summary, 500),
+                "answer": "bypass",
+            }));
+            self.passes.insert(gate, Instant::now() + Duration::from_secs(60));
+            return done("Bypass permissions mode is on. Approved without asking.");
+        }
         if gate::pending() {
             return Err("A question is already on screen for the user. Wait for their answer.".into());
         }

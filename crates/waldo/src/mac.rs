@@ -4,7 +4,7 @@ use std::process::ExitCode;
 use serde_json::{json, Value};
 use waldo_core::exec::Executor;
 use waldo_core::gate::Policy;
-use waldo_core::{apps, ax, input, panel, screen, state};
+use waldo_core::{apps, ax, exhaust, input, panel, screen, state};
 
 fn yes_no(v: bool) -> &'static str {
     if v {
@@ -41,6 +41,22 @@ fn status() {
         println!("Stop switch:       ON ({})", state::stop_reason());
     } else {
         println!("Stop switch:       off");
+    }
+    if state::bypassed() {
+        println!("Bypass mode:       ON (hard stops do not ask)");
+    } else {
+        println!("Bypass mode:       off");
+    }
+    let ex = exhaust::Exhaust::load();
+    if exhaust::enabled() {
+        println!(
+            "Exhaust:           ON ({} controls, {} fields across {} scopes)",
+            ex.total_controls(),
+            ex.total_fields(),
+            ex.controls.len()
+        );
+    } else {
+        println!("Exhaust:           off");
     }
     println!("State folder:      {}", state::dir().display());
 }
@@ -119,6 +135,109 @@ fn log(count: usize) {
     }
 }
 
+fn bypass_cmd(args: &[String]) -> ExitCode {
+    let mode = match args.first().map(|s| s.trim().to_lowercase()).as_deref() {
+        None => {
+            if state::bypassed() {
+                println!("Bypass permissions: ON. Hard stops (money, sending, passwords, destructive) do not ask first. `waldo bypass off` turns them back on.");
+            } else {
+                println!("Bypass permissions: off. Hard stops ask first. `waldo bypass on` skips them.");
+            }
+            return ExitCode::SUCCESS;
+        }
+        Some("on" | "true" | "1" | "yes") => true,
+        Some("off" | "false" | "0" | "no") => false,
+        Some("toggle") => !state::bypassed(),
+        Some(_) => {
+            eprintln!("usage: waldo bypass [on|off]");
+            return ExitCode::from(2);
+        }
+    };
+    if mode {
+        state::set_bypass(true, "waldo bypass on");
+        println!("Bypass permissions: ON. Waldo will not ask before money, sending, passwords, or destructive acts.");
+    } else {
+        state::set_bypass(false, "waldo bypass off");
+        println!("Bypass permissions: off. Waldo asks before money, sending, passwords, and destructive acts.");
+    }
+    ExitCode::SUCCESS
+}
+
+fn exhaust_cmd(args: &[String]) -> ExitCode {
+    match args.first().map(|s| s.trim().to_lowercase()).as_deref() {
+        None | Some("status") => {
+            let ex = exhaust::Exhaust::load();
+            if exhaust::enabled() {
+                println!(
+                    "Exhaust: ON ({} verified controls, {} field rules in {}).",
+                    ex.total_controls(),
+                    ex.total_fields(),
+                    exhaust::path().display()
+                );
+            } else {
+                println!("Exhaust: off. `waldo exhaust on` turns it back on.");
+            }
+            for (scope, ctrls) in &ex.controls {
+                let mut pairs: Vec<(&String, &u32)> = ctrls.iter().collect();
+                pairs.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
+                let summary: Vec<String> = pairs
+                    .into_iter()
+                    .take(8)
+                    .map(|(k, v)| format!("{k} ({v}x)"))
+                    .collect();
+                if !summary.is_empty() {
+                    println!("  [{scope}] -> {}", summary.join(", "));
+                }
+            }
+            ExitCode::SUCCESS
+        }
+        Some("--json" | "json") => {
+            let ex = exhaust::Exhaust::load();
+            println!("{}", serde_json::to_string_pretty(&ex).unwrap_or_default());
+            ExitCode::SUCCESS
+        }
+        Some("on" | "true" | "1" | "yes") => {
+            exhaust::set_enabled(true, "waldo exhaust on");
+            println!("Exhaust: ON. Waldo ranks verified controls first in `see` and remembers field physics across sessions.");
+            ExitCode::SUCCESS
+        }
+        Some("off" | "false" | "0" | "no") => {
+            exhaust::set_enabled(false, "waldo exhaust off");
+            println!("Exhaust: off. Waldo will not rank or record learned controls and field rules.");
+            ExitCode::SUCCESS
+        }
+        Some("toggle") => {
+            let next = !exhaust::enabled();
+            exhaust::set_enabled(next, "waldo exhaust toggle");
+            println!("Exhaust: {}.", if next { "ON" } else { "off" });
+            ExitCode::SUCCESS
+        }
+        Some("clear" | "reset") => {
+            if exhaust::clear() {
+                println!("Exhaust cleared. Removed {}.", exhaust::path().display());
+            } else {
+                println!("Exhaust was already empty.");
+            }
+            ExitCode::SUCCESS
+        }
+        Some("backfill") => {
+            let mut ex = exhaust::Exhaust::load();
+            let count = ex.backfill_from_audit();
+            println!(
+                "Backfilled {count} verified actions from audit.jsonl ({} controls, {} field rules now in {}).",
+                ex.total_controls(),
+                ex.total_fields(),
+                exhaust::path().display()
+            );
+            ExitCode::SUCCESS
+        }
+        Some(_) => {
+            eprintln!("usage: waldo exhaust [status|on|off|clear|backfill|--json]");
+            ExitCode::from(2)
+        }
+    }
+}
+
 /// The gate panel: the one that came with Waldo, or build it now from the
 /// source inside this binary. An install from crates.io has no panel until
 /// this runs.
@@ -163,6 +282,8 @@ pub fn run(args: &[String]) -> ExitCode {
             ExitCode::SUCCESS
         }
         Some("call") => call(&args[1..]),
+        Some("bypass") => bypass_cmd(&args[1..]),
+        Some("exhaust") => exhaust_cmd(&args[1..]),
         Some("policy") => match Policy::load() {
             Ok(p) => {
                 println!("{}", serde_json::to_string_pretty(&p).unwrap_or_default());

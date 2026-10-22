@@ -8,6 +8,7 @@
 //! directories that start servers on Linux can list the tools: `exec` is
 //! then a stand-in whose every tool answers with [`MACOS_ONLY`].
 
+pub mod exhaust;
 pub mod geom;
 pub mod state;
 pub mod tools;
